@@ -114,6 +114,7 @@
                                     <th>Time</th>
                                     <th>Difficulty</th>
                                     <th>Score</th>
+                                    <th>Player</th>
                                 </tr>
                             </thead>
                             <tbody id="fastest-times-body">
@@ -133,6 +134,7 @@
                                     <th>Time</th>
                                     <th>Difficulty</th>
                                     <th>Score</th>
+                                    <th>Player</th>
                                 </tr>
                             </thead>
                             <tbody id="highest-scores-body">
@@ -146,6 +148,31 @@
                 </div>
             </div>
         </section>
+
+        <!-- Welcome Modal -->
+        <div id="welcome-modal" class="modal">
+            <div class="modal-content welcome-modal-content">
+                <h2 class="modal-title">🎸 WELCOME TO METAL SUDOKU! 🎸</h2>
+                <p class="modal-text">Enter your username to join the global leaderboards and track your progress!</p>
+                <form id="username-form" class="username-form">
+                    <div class="input-group">
+                        <label for="username-input" class="input-label">Choose your Metal Name:</label>
+                        <input
+                            type="text"
+                            id="username-input"
+                            class="username-input"
+                            placeholder="Enter username..."
+                            maxlength="50"
+                            required
+                        >
+                        <div id="username-error" class="error-message hidden"></div>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="submit" class="btn btn--primary" id="register-btn">JOIN THE BATTLE</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <!-- Win Modal -->
         <div id="win-modal" class="modal hidden">

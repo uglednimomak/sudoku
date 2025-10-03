@@ -1148,6 +1148,69 @@ html, body {
   margin-bottom: var(--space-16);
 }
 
+/* Welcome Modal Styles */
+.welcome-modal-content {
+  max-width: 500px;
+}
+
+.username-form {
+  margin-top: var(--space-20);
+}
+
+.input-group {
+  margin-bottom: var(--space-20);
+}
+
+.input-label {
+  display: block;
+  color: var(--metal-gold);
+  font-family: 'Orbitron', monospace;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.username-input {
+  width: 100%;
+  padding: var(--space-12);
+  background-color: var(--metal-bg);
+  border: 2px solid var(--metal-silver);
+  border-radius: var(--radius-base);
+  color: var(--metal-silver);
+  font-family: 'Orbitron', monospace;
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.username-input:focus {
+  outline: none;
+  border-color: var(--metal-gold);
+  box-shadow: 0 0 10px var(--metal-gold);
+  background-color: var(--metal-surface);
+}
+
+.username-input::placeholder {
+  color: var(--metal-grid);
+  font-style: italic;
+}
+
+.error-message {
+  color: var(--metal-highlight);
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-6);
+  text-align: center;
+  font-weight: 500;
+}
+
+.error-message.hidden {
+  display: none;
+}
+
 /* Animations */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
@@ -1298,6 +1361,14 @@ html, body {
   color: var(--metal-gold);
   border-bottom-color: var(--metal-gold);
   text-shadow: 0 0 5px var(--metal-gold);
+}
+
+/* Username column styling */
+.username-cell {
+  color: var(--metal-gold) !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* Responsive Design */

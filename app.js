@@ -21,15 +21,21 @@ class MetalSudoku {
             5: { name: 'Expert', preFilled: 22 }
         };
 
-        // Game history
-        this.gameHistory = this.loadGameHistory();
+        // Game history and user session
+        this.gameHistory = [];
+        this.userSession = null;
+        this.currentUser = null;
 
         this.init();
     }
     
-    init() {
+    async init() {
         this.createGrid();
         this.bindEvents();
+
+        // Initialize user session
+        await this.initializeSession();
+
         this.newGame();
         // Initialize displays if they exist
         if (document.getElementById('history-table-body')) {
@@ -132,6 +138,15 @@ class MetalSudoku {
                 this.switchLeaderboardTab(e.target.dataset.tab);
             });
         });
+
+        // Username form
+        const usernameForm = document.getElementById('username-form');
+        if (usernameForm) {
+            usernameForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.registerUser();
+            });
+        }
     }
     
     moveSelection(dRow, dCol) {
@@ -479,43 +494,167 @@ class MetalSudoku {
         document.getElementById('status-text').textContent = message;
     }
 
-    // Game History Management
-    loadGameHistory() {
+    // Session and User Management
+    async initializeSession() {
         try {
-            const history = localStorage.getItem('metalSudokuHistory');
-            return history ? JSON.parse(history) : [];
+            const response = await fetch('/api/session', {
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.userSession = data;
+
+                if (!data.hasUser) {
+                    this.showWelcomeModal();
+                } else {
+                    this.currentUser = {
+                        id: data.userId,
+                        username: data.username
+                    };
+                    await this.loadGameHistory();
+                }
+            } else {
+                console.error('Failed to initialize session');
+            }
+        } catch (error) {
+            console.error('Error initializing session:', error);
+        }
+    }
+
+    showWelcomeModal() {
+        const modal = document.getElementById('welcome-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    }
+
+    hideWelcomeModal() {
+        const modal = document.getElementById('welcome-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+
+    async registerUser() {
+        const usernameInput = document.getElementById('username-input');
+        const errorDiv = document.getElementById('username-error');
+        const registerBtn = document.getElementById('register-btn');
+
+        const username = usernameInput.value.trim();
+
+        if (!username) {
+            this.showError(errorDiv, 'Please enter a username');
+            return;
+        }
+
+        if (username.length > 50) {
+            this.showError(errorDiv, 'Username must be 50 characters or less');
+            return;
+        }
+
+        registerBtn.disabled = true;
+        registerBtn.textContent = 'JOINING...';
+
+        try {
+            const response = await fetch('/api/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({ username })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                this.currentUser = {
+                    id: data.userId,
+                    username: data.username
+                };
+                this.hideWelcomeModal();
+                this.updateStatus(`Welcome, ${data.username}! Ready to rock!`);
+                await this.loadGameHistory();
+            } else {
+                this.showError(errorDiv, data.error || 'Registration failed');
+            }
+        } catch (error) {
+            this.showError(errorDiv, 'Network error. Please try again.');
+            console.error('Registration error:', error);
+        } finally {
+            registerBtn.disabled = false;
+            registerBtn.textContent = 'JOIN THE BATTLE';
+        }
+    }
+
+    showError(errorDiv, message) {
+        errorDiv.textContent = message;
+        errorDiv.classList.remove('hidden');
+        setTimeout(() => {
+            errorDiv.classList.add('hidden');
+        }, 5000);
+    }
+
+    // Game History Management
+    async loadGameHistory() {
+        if (!this.currentUser) return;
+
+        try {
+            const response = await fetch('/api/history', {
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.gameHistory = data.games || [];
+            } else {
+                console.error('Failed to load game history');
+            }
         } catch (error) {
             console.error('Error loading game history:', error);
-            return [];
         }
     }
 
-    saveGameHistory() {
-        try {
-            localStorage.setItem('metalSudokuHistory', JSON.stringify(this.gameHistory));
-        } catch (error) {
-            console.error('Error saving game history:', error);
-        }
-    }
+    async addGameToHistory(completionTime, difficulty) {
+        const score = this.calculateScore(completionTime, difficulty);
+        const difficultyName = this.difficultySettings[difficulty].name;
 
-    addGameToHistory(completionTime, difficulty) {
         const gameRecord = {
-            id: Date.now() + Math.random(), // Unique ID
-            date: new Date().toISOString(),
-            time: completionTime,
+            completion_time: completionTime,
             difficulty: difficulty,
-            difficultyName: this.difficultySettings[difficulty].name,
-            score: this.calculateScore(completionTime, difficulty)
+            difficulty_name: difficultyName,
+            score: score,
+            completed_at: new Date().toISOString()
         };
 
-        this.gameHistory.unshift(gameRecord); // Add to beginning
+        if (this.currentUser) {
+            try {
+                const response = await fetch('/api/game', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        difficulty,
+                        difficultyName,
+                        completionTime,
+                        score
+                    })
+                });
 
-        // Keep only last 100 games to prevent storage bloat
-        if (this.gameHistory.length > 100) {
-            this.gameHistory = this.gameHistory.slice(0, 100);
+                if (response.ok) {
+                    // Reload history to get updated data
+                    await this.loadGameHistory();
+                } else {
+                    console.error('Failed to save game to database');
+                }
+            } catch (error) {
+                console.error('Error saving game:', error);
+            }
         }
 
-        this.saveGameHistory();
         return gameRecord;
     }
 
@@ -591,91 +730,105 @@ class MetalSudoku {
 
         noHistory.classList.add('hidden');
         tbody.innerHTML = this.gameHistory.map(game => {
-            const date = new Date(game.date);
+            const date = new Date(game.completed_at);
             return `
                 <tr>
                     <td>${date.toLocaleDateString()}</td>
-                    <td>${this.formatTime(game.time)}</td>
-                    <td>${game.difficultyName}</td>
+                    <td>${this.formatTime(game.completion_time)}</td>
+                    <td>${game.difficulty_name}</td>
                     <td>${game.score}</td>
                 </tr>
             `;
         }).join('');
     }
 
-    updateLeaderboardsDisplay() {
-        this.updateFastestTimes();
-        this.updateHighestScores();
+    async updateLeaderboardsDisplay() {
+        await this.updateFastestTimes();
+        await this.updateHighestScores();
     }
 
-    updateFastestTimes() {
+    async updateFastestTimes() {
         const tbody = document.getElementById('fastest-times-body');
         const noFastest = document.getElementById('no-fastest');
 
-        if (this.gameHistory.length === 0) {
-            tbody.innerHTML = '';
-            noFastest.classList.remove('hidden');
-            return;
-        }
+        try {
+            const response = await fetch('/api/leaderboards?type=fastest&limit=10', {
+                credentials: 'include'
+            });
 
-        noFastest.classList.add('hidden');
+            if (response.ok) {
+                const data = await response.json();
+                const leaderboard = data.leaderboard || [];
 
-        // Group by difficulty and get fastest time for each
-        const fastestByDifficulty = {};
-        this.gameHistory.forEach(game => {
-            if (!fastestByDifficulty[game.difficulty] || game.time < fastestByDifficulty[game.difficulty].time) {
-                fastestByDifficulty[game.difficulty] = game;
+                if (leaderboard.length === 0) {
+                    tbody.innerHTML = '';
+                    noFastest.classList.remove('hidden');
+                    return;
+                }
+
+                noFastest.classList.add('hidden');
+
+                tbody.innerHTML = leaderboard.map((entry) => {
+                    const date = new Date(entry.completed_at);
+                    return `
+                        <tr>
+                            <td>${entry.global_rank}</td>
+                            <td>${date.toLocaleDateString()}</td>
+                            <td>${this.formatTime(entry.completion_time)}</td>
+                            <td>${entry.difficulty_name}</td>
+                            <td>${entry.score}</td>
+                            <td class="username-cell">${entry.username}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                console.error('Failed to fetch fastest times');
             }
-        });
-
-        // Convert to array and sort by time
-        const fastestTimes = Object.values(fastestByDifficulty)
-            .sort((a, b) => a.time - b.time)
-            .slice(0, 10); // Top 10
-
-        tbody.innerHTML = fastestTimes.map((game, index) => {
-            const date = new Date(game.date);
-            return `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td>${date.toLocaleDateString()}</td>
-                    <td>${this.formatTime(game.time)}</td>
-                    <td>${game.difficultyName}</td>
-                    <td>${game.score}</td>
-                </tr>
-            `;
-        }).join('');
+        } catch (error) {
+            console.error('Error fetching fastest times:', error);
+        }
     }
 
-    updateHighestScores() {
+    async updateHighestScores() {
         const tbody = document.getElementById('highest-scores-body');
         const noHighest = document.getElementById('no-highest');
 
-        if (this.gameHistory.length === 0) {
-            tbody.innerHTML = '';
-            noHighest.classList.remove('hidden');
-            return;
+        try {
+            const response = await fetch('/api/leaderboards?type=highest&limit=10', {
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const leaderboard = data.leaderboard || [];
+
+                if (leaderboard.length === 0) {
+                    tbody.innerHTML = '';
+                    noHighest.classList.remove('hidden');
+                    return;
+                }
+
+                noHighest.classList.add('hidden');
+
+                tbody.innerHTML = leaderboard.map((entry) => {
+                    const date = new Date(entry.completed_at);
+                    return `
+                        <tr>
+                            <td>${entry.global_rank}</td>
+                            <td>${date.toLocaleDateString()}</td>
+                            <td>${this.formatTime(entry.completion_time)}</td>
+                            <td>${entry.difficulty_name}</td>
+                            <td>${entry.score}</td>
+                            <td class="username-cell">${entry.username}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                console.error('Failed to fetch highest scores');
+            }
+        } catch (error) {
+            console.error('Error fetching highest scores:', error);
         }
-
-        noHighest.classList.add('hidden');
-
-        // Sort by score and get top 10
-        const highestScores = [...this.gameHistory]
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 10);
-
-        tbody.innerHTML = highestScores.map((game, index) => {
-            const date = new Date(game.date);
-            return `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td>${date.toLocaleDateString()}</td>
-                    <td>${this.formatTime(game.time)}</td>
-                    <td>${game.difficultyName}</td>
-                    <td>${game.score}</td>
-                </tr>
-            `;
-        }).join('');
     }
 }
 

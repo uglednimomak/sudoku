@@ -1,4 +1,134 @@
-# metal-sudoku-improved
+# 🎸 Metal Sudoku - Enhanced Edition
+
+A heavy metal-themed Sudoku game with global leaderboards, user sessions, and SQLite database integration.
+
+## 🚀 Features
+
+### Game Features
+- **5 Difficulty Levels**: From Beginner to Expert
+- **Timer & Scoring System**: Track your performance with dynamic scoring
+- **Reset Button**: Reset current puzzle without generating a new one
+- **Hint System**: Get help when you're stuck
+- **Real-time Validation**: Immediate feedback on moves
+
+### Database & User Features
+- **User Registration**: First-time visitors enter a username
+- **Session Management**: Automatic session tracking
+- **Game History**: Personal history of all completed games
+- **Global Leaderboards**:
+  - Fastest completion times across all users
+  - Highest scores across all users
+- **Persistent Data**: All data stored in SQLite database
+
+### UI/UX Features
+- **Metal Theme**: Dark theme with gold accents and metal styling
+- **Responsive Design**: Works on desktop and mobile
+- **Smooth Animations**: Victory animations and hover effects
+- **Collapsible Sections**: Clean interface with expandable history/leaderboards
+
+## 🛠️ Setup Instructions
+
+### Prerequisites
+- Node.js (v14 or higher)
+- npm or yarn
+
+### Installation
+
+1. **Install Dependencies**
+   ```bash
+   npm install
+   ```
+
+2. **Initialize Database**
+   ```bash
+   npm run init-db
+   ```
+
+3. **Start the Server**
+   ```bash
+   npm start
+   ```
+
+   For development with auto-restart:
+   ```bash
+   npm run dev
+   ```
+
+4. **Access the Game**
+   Open your browser and go to: `http://localhost:3000`
+
+## 🗄️ Database Schema
+
+The application uses SQLite with the following tables:
+
+- **users**: Player information and statistics
+- **games**: Individual game records
+- **sessions**: Session management for user tracking
+
+## 🎮 How to Play
+
+1. **First Visit**: Enter your username when prompted
+2. **Select Difficulty**: Choose from 5 difficulty levels
+3. **Play**: Click cells and use number pad or keyboard to fill the grid
+4. **Track Progress**: View your history and compete on global leaderboards
+
+## 🏆 Scoring System
+
+- **Base Points**: Vary by difficulty (100-800 points)
+- **Speed Bonus**: Faster completion = higher score
+- **Global Competition**: Compare with players worldwide
+
+## 📁 Project Structure
+
+```
+metal-sudoku-improved/
+├── index.html          # Main game interface
+├── app.js              # Game logic and API integration
+├── style.css           # Metal-themed styling
+├── server.js           # Express server with API endpoints
+├── package.json        # Dependencies and scripts
+├── database/
+│   ├── schema.sql      # Database schema
+│   └── metal_sudoku.db # SQLite database (created after init)
+└── scripts/
+    └── init-db.js      # Database initialization script
+```
+
+## 🔧 API Endpoints
+
+- `GET /api/session` - Get/create user session
+- `POST /api/register` - Register new user
+- `POST /api/game` - Save completed game
+- `GET /api/history` - Get user's game history
+- `GET /api/leaderboards` - Get global leaderboards
+- `GET /api/user/stats` - Get user statistics
+
+## 🎨 Customization
+
+The metal theme can be customized by modifying CSS variables in `style.css`:
+
+```css
+:root {
+  --metal-bg: #1a1a1a;
+  --metal-surface: #262626;
+  --metal-gold: #d4af37;
+  --metal-silver: #c0c0c0;
+  /* ... more variables */
+}
+```
+
+## 🚀 Deployment
+
+For production deployment:
+
+1. Set `NODE_ENV=production`
+2. Use a process manager like PM2
+3. Configure reverse proxy (nginx/Apache)
+4. Enable HTTPS and update session security settings
+
+## 🤘 Rock On!
+
+Enjoy playing Metal Sudoku and competing with players worldwide! 🎸
 
 A small, client-side web implementation of a Sudoku-like game ("Metal Sudoku").
 The project is a static web app consisting of `index.html`, `style.css`, and `app.js`.
