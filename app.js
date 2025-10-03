@@ -515,10 +515,31 @@ class MetalSudoku {
                     await this.loadGameHistory();
                 }
             } else {
-                console.error('Failed to initialize session');
+                console.error('Failed to initialize session - falling back to localStorage');
+                this.fallbackToLocalStorage();
             }
         } catch (error) {
-            console.error('Error initializing session:', error);
+            console.error('Error initializing session - falling back to localStorage:', error);
+            this.fallbackToLocalStorage();
+        }
+    }
+
+    // Fallback to localStorage when backend is not available
+    fallbackToLocalStorage() {
+        this.useLocalStorage = true;
+
+        // Check if user exists in localStorage
+        const savedUser = localStorage.getItem('metalSudokuUser');
+        if (savedUser) {
+            try {
+                this.currentUser = JSON.parse(savedUser);
+                this.loadGameHistoryFromLocalStorage();
+            } catch (error) {
+                console.error('Error parsing saved user:', error);
+                this.showWelcomeModal();
+            }
+        } else {
+            this.showWelcomeModal();
         }
     }
 
@@ -556,6 +577,21 @@ class MetalSudoku {
         registerBtn.disabled = true;
         registerBtn.textContent = 'JOINING...';
 
+        if (this.useLocalStorage) {
+            // Fallback to localStorage
+            this.currentUser = {
+                id: Date.now(),
+                username: username
+            };
+            localStorage.setItem('metalSudokuUser', JSON.stringify(this.currentUser));
+            this.hideWelcomeModal();
+            this.updateStatus(`Welcome, ${username}! Ready to rock!`);
+            this.loadGameHistoryFromLocalStorage();
+            registerBtn.disabled = false;
+            registerBtn.textContent = 'JOIN THE BATTLE';
+            return;
+        }
+
         try {
             const response = await fetch('/api/register', {
                 method: 'POST',
@@ -580,8 +616,17 @@ class MetalSudoku {
                 this.showError(errorDiv, data.error || 'Registration failed');
             }
         } catch (error) {
-            this.showError(errorDiv, 'Network error. Please try again.');
-            console.error('Registration error:', error);
+            this.showError(errorDiv, 'Backend not available - using local storage');
+            // Fallback to localStorage
+            this.useLocalStorage = true;
+            this.currentUser = {
+                id: Date.now(),
+                username: username
+            };
+            localStorage.setItem('metalSudokuUser', JSON.stringify(this.currentUser));
+            this.hideWelcomeModal();
+            this.updateStatus(`Welcome, ${username}! Ready to rock!`);
+            this.loadGameHistoryFromLocalStorage();
         } finally {
             registerBtn.disabled = false;
             registerBtn.textContent = 'JOIN THE BATTLE';
@@ -600,6 +645,11 @@ class MetalSudoku {
     async loadGameHistory() {
         if (!this.currentUser) return;
 
+        if (this.useLocalStorage) {
+            this.loadGameHistoryFromLocalStorage();
+            return;
+        }
+
         try {
             const response = await fetch('/api/history', {
                 credentials: 'include'
@@ -609,10 +659,30 @@ class MetalSudoku {
                 const data = await response.json();
                 this.gameHistory = data.games || [];
             } else {
-                console.error('Failed to load game history');
+                console.error('Failed to load game history - falling back to localStorage');
+                this.loadGameHistoryFromLocalStorage();
             }
         } catch (error) {
-            console.error('Error loading game history:', error);
+            console.error('Error loading game history - falling back to localStorage:', error);
+            this.loadGameHistoryFromLocalStorage();
+        }
+    }
+
+    loadGameHistoryFromLocalStorage() {
+        try {
+            const history = localStorage.getItem('metalSudokuHistory');
+            this.gameHistory = history ? JSON.parse(history) : [];
+        } catch (error) {
+            console.error('Error loading game history from localStorage:', error);
+            this.gameHistory = [];
+        }
+    }
+
+    saveGameHistoryToLocalStorage() {
+        try {
+            localStorage.setItem('metalSudokuHistory', JSON.stringify(this.gameHistory));
+        } catch (error) {
+            console.error('Error saving game history to localStorage:', error);
         }
     }
 
@@ -627,6 +697,16 @@ class MetalSudoku {
             score: score,
             completed_at: new Date().toISOString()
         };
+
+        if (this.useLocalStorage) {
+            // Add to localStorage
+            this.gameHistory.unshift(gameRecord);
+            if (this.gameHistory.length > 100) {
+                this.gameHistory = this.gameHistory.slice(0, 100);
+            }
+            this.saveGameHistoryToLocalStorage();
+            return gameRecord;
+        }
 
         if (this.currentUser) {
             try {
@@ -648,10 +728,16 @@ class MetalSudoku {
                     // Reload history to get updated data
                     await this.loadGameHistory();
                 } else {
-                    console.error('Failed to save game to database');
+                    console.error('Failed to save game to database - falling back to localStorage');
+                    this.useLocalStorage = true;
+                    this.gameHistory.unshift(gameRecord);
+                    this.saveGameHistoryToLocalStorage();
                 }
             } catch (error) {
-                console.error('Error saving game:', error);
+                console.error('Error saving game - falling back to localStorage:', error);
+                this.useLocalStorage = true;
+                this.gameHistory.unshift(gameRecord);
+                this.saveGameHistoryToLocalStorage();
             }
         }
 
@@ -751,6 +837,11 @@ class MetalSudoku {
         const tbody = document.getElementById('fastest-times-body');
         const noFastest = document.getElementById('no-fastest');
 
+        if (this.useLocalStorage) {
+            this.updateFastestTimesFromLocalStorage();
+            return;
+        }
+
         try {
             const response = await fetch('/api/leaderboards?type=fastest&limit=10', {
                 credentials: 'include'
@@ -782,16 +873,64 @@ class MetalSudoku {
                     `;
                 }).join('');
             } else {
-                console.error('Failed to fetch fastest times');
+                console.error('Failed to fetch fastest times - using local data');
+                this.updateFastestTimesFromLocalStorage();
             }
         } catch (error) {
-            console.error('Error fetching fastest times:', error);
+            console.error('Error fetching fastest times - using local data:', error);
+            this.updateFastestTimesFromLocalStorage();
         }
+    }
+
+    updateFastestTimesFromLocalStorage() {
+        const tbody = document.getElementById('fastest-times-body');
+        const noFastest = document.getElementById('no-fastest');
+
+        if (this.gameHistory.length === 0) {
+            tbody.innerHTML = '';
+            noFastest.classList.remove('hidden');
+            return;
+        }
+
+        noFastest.classList.add('hidden');
+
+        // Group by difficulty and get fastest time for each
+        const fastestByDifficulty = {};
+        this.gameHistory.forEach(game => {
+            if (!fastestByDifficulty[game.difficulty] || game.completion_time < fastestByDifficulty[game.difficulty].completion_time) {
+                fastestByDifficulty[game.difficulty] = game;
+            }
+        });
+
+        // Convert to array and sort by time
+        const fastestTimes = Object.values(fastestByDifficulty)
+            .sort((a, b) => a.completion_time - b.completion_time)
+            .slice(0, 10); // Top 10
+
+        tbody.innerHTML = fastestTimes.map((game, index) => {
+            const date = new Date(game.completed_at);
+            const username = this.currentUser ? this.currentUser.username : 'You';
+            return `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${date.toLocaleDateString()}</td>
+                    <td>${this.formatTime(game.completion_time)}</td>
+                    <td>${game.difficulty_name}</td>
+                    <td>${game.score}</td>
+                    <td class="username-cell">${username}</td>
+                </tr>
+            `;
+        }).join('');
     }
 
     async updateHighestScores() {
         const tbody = document.getElementById('highest-scores-body');
         const noHighest = document.getElementById('no-highest');
+
+        if (this.useLocalStorage) {
+            this.updateHighestScoresFromLocalStorage();
+            return;
+        }
 
         try {
             const response = await fetch('/api/leaderboards?type=highest&limit=10', {
@@ -824,11 +963,46 @@ class MetalSudoku {
                     `;
                 }).join('');
             } else {
-                console.error('Failed to fetch highest scores');
+                console.error('Failed to fetch highest scores - using local data');
+                this.updateHighestScoresFromLocalStorage();
             }
         } catch (error) {
-            console.error('Error fetching highest scores:', error);
+            console.error('Error fetching highest scores - using local data:', error);
+            this.updateHighestScoresFromLocalStorage();
         }
+    }
+
+    updateHighestScoresFromLocalStorage() {
+        const tbody = document.getElementById('highest-scores-body');
+        const noHighest = document.getElementById('no-highest');
+
+        if (this.gameHistory.length === 0) {
+            tbody.innerHTML = '';
+            noHighest.classList.remove('hidden');
+            return;
+        }
+
+        noHighest.classList.add('hidden');
+
+        // Sort by score and get top 10
+        const highestScores = [...this.gameHistory]
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 10);
+
+        tbody.innerHTML = highestScores.map((game, index) => {
+            const date = new Date(game.completed_at);
+            const username = this.currentUser ? this.currentUser.username : 'You';
+            return `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${date.toLocaleDateString()}</td>
+                    <td>${this.formatTime(game.completion_time)}</td>
+                    <td>${game.difficulty_name}</td>
+                    <td>${game.score}</td>
+                    <td class="username-cell">${username}</td>
+                </tr>
+            `;
+        }).join('');
     }
 }
 
