@@ -1,0 +1,685 @@
+// Metal Sudoku Game Logic
+
+class MetalSudoku {
+    constructor() {
+        this.grid = Array(9).fill().map(() => Array(9).fill(0));
+        this.solution = Array(9).fill().map(() => Array(9).fill(0));
+        this.preFilledCells = Array(9).fill().map(() => Array(9).fill(false));
+        this.selectedCell = null;
+        this.selectedNumber = null;
+        this.timer = 0;
+        this.timerInterval = null;
+        this.gameActive = false;
+        this.difficulty = 3;
+
+        // Difficulty settings (number of pre-filled cells)
+        this.difficultySettings = {
+            1: { name: 'Beginner', preFilled: 50 },
+            2: { name: 'Easy', preFilled: 40 },
+            3: { name: 'Medium', preFilled: 35 },
+            4: { name: 'Hard', preFilled: 28 },
+            5: { name: 'Expert', preFilled: 22 }
+        };
+
+        // Game history
+        this.gameHistory = this.loadGameHistory();
+
+        this.init();
+    }
+    
+    init() {
+        this.createGrid();
+        this.bindEvents();
+        this.newGame();
+        // Initialize displays if they exist
+        if (document.getElementById('history-table-body')) {
+            this.updateHistoryDisplay();
+        }
+        if (document.getElementById('fastest-times-body')) {
+            this.updateLeaderboardsDisplay();
+        }
+    }
+    
+    createGrid() {
+        const gridContainer = document.getElementById('sudoku-grid');
+        gridContainer.innerHTML = '';
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                const cell = document.createElement('div');
+                cell.className = 'sudoku-cell';
+                cell.dataset.row = row;
+                cell.dataset.col = col;
+                cell.tabIndex = 0;
+                cell.addEventListener('click', () => this.selectCell(row, col));
+                gridContainer.appendChild(cell);
+            }
+        }
+    }
+    
+    bindEvents() {
+        // Difficulty selector
+        document.getElementById('difficulty').addEventListener('change', (e) => {
+            this.difficulty = parseInt(e.target.value);
+        });
+        // New game button
+        document.getElementById('new-game').addEventListener('click', () => {
+            this.newGame();
+        });
+
+        // Reset game button
+        document.getElementById('reset-game').addEventListener('click', () => {
+            this.resetGame();
+        });
+        // Clear cell button
+        document.getElementById('clear-cell').addEventListener('click', () => {
+            this.clearSelectedCell();
+        });
+        // Check solution button
+        document.getElementById('check-solution').addEventListener('click', () => {
+            this.checkSolution();
+        });
+        // Hint button
+        document.getElementById('hint-btn').addEventListener('click', () => {
+            this.giveHint();
+        });
+        // Number pad buttons
+        document.querySelectorAll('.number-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const number = parseInt(e.target.dataset.number);
+                this.selectNumber(number);
+            });
+        });
+        // Keyboard input
+        document.addEventListener('keydown', (e) => {
+            if (!this.gameActive) return;
+            if (!this.selectedCell) return;
+            if (e.key >= '1' && e.key <= '9') {
+                this.selectNumber(parseInt(e.key));
+            } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                this.clearSelectedCell();
+            } else if (e.key === 'ArrowUp') {
+                this.moveSelection(-1, 0);
+            } else if (e.key === 'ArrowDown') {
+                this.moveSelection(1, 0);
+            } else if (e.key === 'ArrowLeft') {
+                this.moveSelection(0, -1);
+            } else if (e.key === 'ArrowRight') {
+                this.moveSelection(0, 1);
+            }
+        });
+        // Modal events
+        document.getElementById('play-again').addEventListener('click', () => {
+            this.hideModal();
+            this.newGame();
+        });
+        document.getElementById('close-modal').addEventListener('click', () => {
+            this.hideModal();
+        });
+
+        // History toggle
+        document.getElementById('toggle-history').addEventListener('click', () => {
+            this.toggleHistory();
+        });
+
+        // Leaderboards toggle
+        document.getElementById('toggle-leaderboards').addEventListener('click', () => {
+            this.toggleLeaderboards();
+        });
+
+        // Leaderboard tabs
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.switchLeaderboardTab(e.target.dataset.tab);
+            });
+        });
+    }
+    
+    moveSelection(dRow, dCol) {
+        if (!this.selectedCell) return;
+        let { row, col } = this.selectedCell;
+        row += dRow;
+        col += dCol;
+        if (row >= 0 && row < 9 && col >= 0 && col < 9) {
+            this.selectCell(row, col);
+            const cellElement = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            cellElement.focus();
+        }
+    }
+    
+    newGame() {
+        this.stopTimer();
+        this.timer = 0;
+        this.updateTimerDisplay();
+        this.gameActive = true;
+        this.selectedCell = null;
+        // Generate new puzzle
+        this.generatePuzzle();
+        this.renderGrid();
+        this.startTimer();
+        this.updateStatus('Select a cell and enter a number');
+    }
+
+    resetGame() {
+        if (!this.gameActive) return;
+
+        this.stopTimer();
+        this.timer = 0;
+        this.updateTimerDisplay();
+        this.selectedCell = null;
+
+        // Reset grid to initial state (only pre-filled cells)
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                if (!this.preFilledCells[row][col]) {
+                    this.grid[row][col] = 0;
+                }
+            }
+        }
+
+        this.renderGrid();
+        this.startTimer();
+        this.updateStatus('Game reset! Select a cell and enter a number');
+    }
+    
+    generatePuzzle() {
+        // Start with empty grids
+        this.grid = Array(9).fill().map(() => Array(9).fill(0));
+        this.solution = Array(9).fill().map(() => Array(9).fill(0));
+        this.preFilledCells = Array(9).fill().map(() => Array(9).fill(false));
+        // Generate a complete valid solution
+        this.fillGrid(this.solution);
+        // Copy solution to grid
+        for (let i = 0; i < 9; i++) {
+            for (let j = 0; j < 9; j++) {
+                this.grid[i][j] = this.solution[i][j];
+            }
+        }
+        // Remove numbers based on difficulty
+        const cellsToRemove = 81 - this.difficultySettings[this.difficulty].preFilled;
+        const initialCells = [];
+        for (let row = 0; row < 9; row++)
+            for (let col = 0; col < 9; col++)
+                initialCells.push([row, col]);
+        this.shuffleArray(initialCells);
+        for (let i = 0; i < cellsToRemove && i < initialCells.length; i++) {
+            const [row, col] = initialCells[i];
+            this.grid[row][col] = 0;
+            this.preFilledCells[row][col] = false;
+        }
+        for (let row = 0; row < 9; row++)
+            for (let col = 0; col < 9; col++)
+                if (this.grid[row][col] !== 0)
+                    this.preFilledCells[row][col] = true;
+    }
+    
+    fillGrid(grid) {
+        const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                if (grid[row][col] === 0) {
+                    this.shuffleArray(numbers);
+                    for (let num of numbers) {
+                        if (this.isValidMove(grid, row, col, num)) {
+                            grid[row][col] = num;
+                            if (this.fillGrid(grid)) {
+                                return true;
+                            }
+                            grid[row][col] = 0;
+                        }
+                    }
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+    
+    isValidMove(grid, row, col, num) {
+        // Check row
+        for (let c = 0; c < 9; c++) {
+            if (c !== col && grid[row][c] === num) return false;
+        }
+        // Check column
+        for (let r = 0; r < 9; r++) {
+            if (r !== row && grid[r][col] === num) return false;
+        }
+        // Check 3x3 box
+        const boxRow = Math.floor(row / 3) * 3;
+        const boxCol = Math.floor(col / 3) * 3;
+        for (let r = boxRow; r < boxRow + 3; r++) {
+            for (let c = boxCol; c < boxCol + 3; c++) {
+                if ((r !== row || c !== col) && grid[r][c] === num) return false;
+            }
+        }
+        return true;
+    }
+    
+    selectCell(row, col) {
+        if (!this.gameActive) return;
+        // Remove previous selection
+        document.querySelectorAll('.sudoku-cell').forEach(cell => {
+            cell.classList.remove('selected', 'highlight-same');
+        });
+        this.selectedCell = { row, col };
+        // Highlight selected cell
+        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        cell.classList.add('selected');
+        // Highlight cells with same number
+        const cellValue = this.grid[row][col];
+        if (cellValue !== 0) {
+            document.querySelectorAll('.sudoku-cell').forEach(cell => {
+                if (cell.textContent == cellValue) {
+                    cell.classList.add('highlight-same');
+                }
+            });
+        }
+        cell.focus();
+        this.updateStatus(`Selected cell (${row + 1}, ${col + 1})`);
+    }
+    
+    selectNumber(number) {
+        if (!this.selectedCell || !this.gameActive) return;
+        const { row, col } = this.selectedCell;
+        // Don't allow changing pre-filled numbers
+        if (this.preFilledCells[row][col]) {
+            this.updateStatus('Cannot modify pre-filled numbers');
+            return;
+        }
+        // Remove previous number selection highlighting
+        document.querySelectorAll('.number-btn').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        // Highlight selected number
+        document.querySelector(`[data-number="${number}"]`).classList.add('selected');
+        this.selectedNumber = number;
+        this.placeNumber(row, col, number);
+    }
+    
+    placeNumber(row, col, number) {
+        // Create a temporary grid to test the move
+        const tempGrid = this.grid.map(row => [...row]);
+        tempGrid[row][col] = number;
+        
+        // Check if the move is valid
+        if (!this.isValidMove(tempGrid, row, col, number)) {
+            // Invalid move - show error
+            const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            cell.classList.add('error');
+            this.updateStatus('Invalid move! Check for conflicts.');
+            // Remove the invalid number after a short delay
+            setTimeout(() => {
+                cell.classList.remove('error');
+            }, 700);
+        } else {
+            // Valid move - place the number
+            this.grid[row][col] = number;
+            this.renderGrid();
+            this.updateStatus('Good move!');
+            // Check for win condition
+            if (this.isGridComplete()) {
+                this.gameWon();
+            }
+        }
+    }
+    
+    clearSelectedCell() {
+        if (!this.selectedCell || !this.gameActive) return;
+        const { row, col } = this.selectedCell;
+        if (this.preFilledCells[row][col]) {
+            this.updateStatus('Cannot clear pre-filled numbers');
+            return;
+        }
+        this.grid[row][col] = 0;
+        this.renderGrid();
+        this.updateStatus('Cell cleared');
+    }
+    
+    giveHint() {
+        if (!this.selectedCell || !this.gameActive) return;
+        const { row, col } = this.selectedCell;
+        if (this.preFilledCells[row][col]) {
+            this.updateStatus('This cell is already filled');
+            return;
+        }
+        if (this.grid[row][col] !== 0) {
+            this.updateStatus('Clear this cell first to get a hint');
+            return;
+        }
+        // Place the correct number from solution
+        const correctNumber = this.solution[row][col];
+        this.grid[row][col] = correctNumber;
+        this.renderGrid();
+        this.updateStatus(`Hint: The correct number is ${correctNumber}`);
+        // Check for win condition
+        if (this.isGridComplete()) {
+            this.gameWon();
+        }
+    }
+    
+    renderGrid() {
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+                const value = this.grid[row][col];
+                cell.textContent = value === 0 ? '' : value;
+                cell.classList.remove('error'); // Clear any error states
+                if (this.preFilledCells[row][col]) {
+                    cell.classList.add('pre-filled');
+                } else {
+                    cell.classList.remove('pre-filled');
+                }
+            }
+        }
+    }
+    
+    isGridComplete() {
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                if (this.grid[row][col] === 0) return false;
+                if (this.grid[row][col] !== this.solution[row][col]) return false;
+            }
+        }
+        return true;
+    }
+    
+    checkSolution() {
+        if (!this.gameActive) return;
+        let hasErrors = false;
+        // Clear previous errors
+        document.querySelectorAll('.sudoku-cell').forEach(cell => {
+            cell.classList.remove('error');
+        });
+        for (let row = 0; row < 9; row++) {
+            for (let col = 0; col < 9; col++) {
+                if (this.grid[row][col] !== 0) {
+                    // Create temp grid to test this cell
+                    const tempGrid = this.grid.map(row => [...row]);
+                    tempGrid[row][col] = 0; // Temporarily remove this number
+                    if (!this.isValidMove(tempGrid, row, col, this.grid[row][col])) {
+                        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+                        cell.classList.add('error');
+                        hasErrors = true;
+                    }
+                }
+            }
+        }
+        this.updateStatus(hasErrors ? 'Errors found! Check highlighted cells.' : 'No errors found! Keep going!');
+    }
+    
+    gameWon() {
+        this.gameActive = false;
+        this.stopTimer();
+
+        // Save game to history
+        const gameRecord = this.addGameToHistory(this.timer, this.difficulty);
+
+        document.querySelectorAll('.sudoku-cell').forEach(cell => {
+            cell.classList.add('victory-animation');
+        });
+        document.getElementById('final-time').textContent = this.formatTime(this.timer);
+
+        // Update modal with score information
+        const scoreElement = document.getElementById('final-score');
+        if (scoreElement) {
+            scoreElement.textContent = gameRecord.score;
+        }
+
+        this.showModal();
+        this.updateStatus('🎸 VICTORY! You are a Metal Sudoku Master! 🎸');
+
+        // Update history display if it exists
+        if (typeof this.updateHistoryDisplay === 'function') {
+            this.updateHistoryDisplay();
+        }
+    }
+    
+    showModal() {
+        document.getElementById('win-modal').classList.remove('hidden');
+    }
+    
+    hideModal() {
+        document.getElementById('win-modal').classList.add('hidden');
+        document.querySelectorAll('.sudoku-cell').forEach(cell => {
+            cell.classList.remove('victory-animation');
+        });
+    }
+    
+    startTimer() {
+        this.timerInterval = setInterval(() => {
+            this.timer++;
+            this.updateTimerDisplay();
+        }, 1000);
+    }
+    
+    stopTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+    
+    updateTimerDisplay() {
+        document.getElementById('timer-display').textContent = this.formatTime(this.timer);
+    }
+    
+    formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    
+    updateStatus(message) {
+        document.getElementById('status-text').textContent = message;
+    }
+
+    // Game History Management
+    loadGameHistory() {
+        try {
+            const history = localStorage.getItem('metalSudokuHistory');
+            return history ? JSON.parse(history) : [];
+        } catch (error) {
+            console.error('Error loading game history:', error);
+            return [];
+        }
+    }
+
+    saveGameHistory() {
+        try {
+            localStorage.setItem('metalSudokuHistory', JSON.stringify(this.gameHistory));
+        } catch (error) {
+            console.error('Error saving game history:', error);
+        }
+    }
+
+    addGameToHistory(completionTime, difficulty) {
+        const gameRecord = {
+            id: Date.now() + Math.random(), // Unique ID
+            date: new Date().toISOString(),
+            time: completionTime,
+            difficulty: difficulty,
+            difficultyName: this.difficultySettings[difficulty].name,
+            score: this.calculateScore(completionTime, difficulty)
+        };
+
+        this.gameHistory.unshift(gameRecord); // Add to beginning
+
+        // Keep only last 100 games to prevent storage bloat
+        if (this.gameHistory.length > 100) {
+            this.gameHistory = this.gameHistory.slice(0, 100);
+        }
+
+        this.saveGameHistory();
+        return gameRecord;
+    }
+
+    calculateScore(timeInSeconds, difficulty) {
+        // Score calculation: base points by difficulty, bonus for speed
+        const basePoints = {
+            1: 100,  // Beginner
+            2: 200,  // Easy
+            3: 300,  // Medium
+            4: 500,  // Hard
+            5: 800   // Expert
+        };
+
+        const base = basePoints[difficulty] || 300;
+        const timeBonus = Math.max(0, 1800 - timeInSeconds); // 30 minutes max bonus
+        const speedMultiplier = timeBonus > 0 ? (timeBonus / 1800) * 0.5 + 1 : 1;
+
+        return Math.round(base * speedMultiplier);
+    }
+
+    // History and Leaderboards Display
+    toggleHistory() {
+        const content = document.getElementById('history-content');
+        const button = document.getElementById('toggle-history');
+
+        if (content.classList.contains('hidden')) {
+            content.classList.remove('hidden');
+            button.textContent = 'HIDE HISTORY';
+            this.updateHistoryDisplay();
+        } else {
+            content.classList.add('hidden');
+            button.textContent = 'SHOW HISTORY';
+        }
+    }
+
+    toggleLeaderboards() {
+        const content = document.getElementById('leaderboards-content');
+        const button = document.getElementById('toggle-leaderboards');
+
+        if (content.classList.contains('hidden')) {
+            content.classList.remove('hidden');
+            button.textContent = 'HIDE LEADERBOARDS';
+            this.updateLeaderboardsDisplay();
+        } else {
+            content.classList.add('hidden');
+            button.textContent = 'SHOW LEADERBOARDS';
+        }
+    }
+
+    switchLeaderboardTab(tab) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+        // Update table containers
+        document.querySelectorAll('.leaderboard-table-container').forEach(container => {
+            container.classList.remove('active');
+        });
+        document.getElementById(tab === 'fastest' ? 'fastest-times' : 'highest-scores').classList.add('active');
+    }
+
+    updateHistoryDisplay() {
+        const tbody = document.getElementById('history-table-body');
+        const noHistory = document.getElementById('no-history');
+
+        if (this.gameHistory.length === 0) {
+            tbody.innerHTML = '';
+            noHistory.classList.remove('hidden');
+            return;
+        }
+
+        noHistory.classList.add('hidden');
+        tbody.innerHTML = this.gameHistory.map(game => {
+            const date = new Date(game.date);
+            return `
+                <tr>
+                    <td>${date.toLocaleDateString()}</td>
+                    <td>${this.formatTime(game.time)}</td>
+                    <td>${game.difficultyName}</td>
+                    <td>${game.score}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    updateLeaderboardsDisplay() {
+        this.updateFastestTimes();
+        this.updateHighestScores();
+    }
+
+    updateFastestTimes() {
+        const tbody = document.getElementById('fastest-times-body');
+        const noFastest = document.getElementById('no-fastest');
+
+        if (this.gameHistory.length === 0) {
+            tbody.innerHTML = '';
+            noFastest.classList.remove('hidden');
+            return;
+        }
+
+        noFastest.classList.add('hidden');
+
+        // Group by difficulty and get fastest time for each
+        const fastestByDifficulty = {};
+        this.gameHistory.forEach(game => {
+            if (!fastestByDifficulty[game.difficulty] || game.time < fastestByDifficulty[game.difficulty].time) {
+                fastestByDifficulty[game.difficulty] = game;
+            }
+        });
+
+        // Convert to array and sort by time
+        const fastestTimes = Object.values(fastestByDifficulty)
+            .sort((a, b) => a.time - b.time)
+            .slice(0, 10); // Top 10
+
+        tbody.innerHTML = fastestTimes.map((game, index) => {
+            const date = new Date(game.date);
+            return `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${date.toLocaleDateString()}</td>
+                    <td>${this.formatTime(game.time)}</td>
+                    <td>${game.difficultyName}</td>
+                    <td>${game.score}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    updateHighestScores() {
+        const tbody = document.getElementById('highest-scores-body');
+        const noHighest = document.getElementById('no-highest');
+
+        if (this.gameHistory.length === 0) {
+            tbody.innerHTML = '';
+            noHighest.classList.remove('hidden');
+            return;
+        }
+
+        noHighest.classList.add('hidden');
+
+        // Sort by score and get top 10
+        const highestScores = [...this.gameHistory]
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 10);
+
+        tbody.innerHTML = highestScores.map((game, index) => {
+            const date = new Date(game.date);
+            return `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${date.toLocaleDateString()}</td>
+                    <td>${this.formatTime(game.time)}</td>
+                    <td>${game.difficultyName}</td>
+                    <td>${game.score}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+}
+
+// Initialize the game when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    new MetalSudoku();
+});
