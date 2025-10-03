@@ -5,7 +5,7 @@ const path = require('path');
 const dbPath = path.join(process.cwd(), 'database', 'metal_sudoku.db');
 
 function getDatabase() {
-    return new sqlite3.Database(dbPath, (err) => {
+    return new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
         if (err) {
             console.error('Error opening database:', err.message);
         }
