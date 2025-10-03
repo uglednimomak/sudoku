@@ -497,13 +497,22 @@ class MetalSudoku {
     // Session and User Management
     async initializeSession() {
         try {
-            const response = await fetch('/api/session', {
-                credentials: 'include'
+            // Get or generate session ID
+            this.sessionId = localStorage.getItem('metalSudokuSessionId') ||
+                            'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('metalSudokuSessionId', this.sessionId);
+
+            const response = await fetch(`/api/session?sessionId=${this.sessionId}`, {
+                headers: {
+                    'X-Session-ID': this.sessionId
+                }
             });
 
             if (response.ok) {
                 const data = await response.json();
                 this.userSession = data;
+                this.sessionId = data.sessionId; // Use server-provided session ID
+                localStorage.setItem('metalSudokuSessionId', this.sessionId);
 
                 if (!data.hasUser) {
                     this.showWelcomeModal();
@@ -593,12 +602,12 @@ class MetalSudoku {
         }
 
         try {
-            const response = await fetch('/api/register', {
+            const response = await fetch(`/api/register?sessionId=${this.sessionId}`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Session-ID': this.sessionId
                 },
-                credentials: 'include',
                 body: JSON.stringify({ username })
             });
 
@@ -651,8 +660,10 @@ class MetalSudoku {
         }
 
         try {
-            const response = await fetch('/api/history', {
-                credentials: 'include'
+            const response = await fetch(`/api/history?sessionId=${this.sessionId}`, {
+                headers: {
+                    'X-Session-ID': this.sessionId
+                }
             });
 
             if (response.ok) {
@@ -710,12 +721,12 @@ class MetalSudoku {
 
         if (this.currentUser) {
             try {
-                const response = await fetch('/api/game', {
+                const response = await fetch(`/api/game?sessionId=${this.sessionId}`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Session-ID': this.sessionId
                     },
-                    credentials: 'include',
                     body: JSON.stringify({
                         difficulty,
                         difficultyName,
@@ -843,9 +854,7 @@ class MetalSudoku {
         }
 
         try {
-            const response = await fetch('/api/leaderboards?type=fastest&limit=10', {
-                credentials: 'include'
-            });
+            const response = await fetch('/api/leaderboards?type=fastest&limit=10');
 
             if (response.ok) {
                 const data = await response.json();
@@ -933,9 +942,7 @@ class MetalSudoku {
         }
 
         try {
-            const response = await fetch('/api/leaderboards?type=highest&limit=10', {
-                credentials: 'include'
-            });
+            const response = await fetch('/api/leaderboards?type=highest&limit=10');
 
             if (response.ok) {
                 const data = await response.json();

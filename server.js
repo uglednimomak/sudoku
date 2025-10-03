@@ -11,13 +11,27 @@ const PORT = process.env.PORT || 3000;
 
 // Database setup
 const dbPath = path.join(__dirname, 'database', 'metal_sudoku.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error opening database:', err.message);
-        process.exit(1);
+let db;
+
+function initializeDatabase() {
+    if (!db) {
+        db = new sqlite3.Database(dbPath, (err) => {
+            if (err) {
+                console.error('Error opening database:', err.message);
+                // Don't exit in serverless environment
+                if (process.env.NODE_ENV !== 'production') {
+                    process.exit(1);
+                }
+            } else {
+                console.log('Connected to SQLite database.');
+            }
+        });
     }
-    console.log('Connected to SQLite database.');
-});
+    return db;
+}
+
+// Initialize database
+db = initializeDatabase();
 
 // Middleware
 app.use(helmet({
