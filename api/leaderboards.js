@@ -1,52 +1,37 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const db = require('../lib/db');
 
-// Database setup
-const dbPath = path.join(process.cwd(), 'database', 'metal_sudoku.db');
-
-function getDatabase() {
-    return new sqlite3.Database(dbPath, (err) => {
-        if (err) {
-            console.error('Error opening database:', err.message);
-        }
-    });
-}
-
-export default function handler(req, res) {
+module.exports = async (req, res) => {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Session-ID, Content-Type');
 
     if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+        return res.status(200).end();
     }
 
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { type = 'fastest', limit = 10 } = req.query;
-    
-    let query;
-    if (type === 'fastest') {
-        query = 'SELECT * FROM fastest_times_global WHERE global_rank <= ? ORDER BY completion_time ASC';
-    } else if (type === 'highest') {
-        query = 'SELECT * FROM highest_scores_global WHERE global_rank <= ? ORDER BY score DESC';
-    } else {
-        return res.status(400).json({ error: 'Invalid leaderboard type' });
-    }
+    try {
+        const { type = 'fastest', limit = 10 } = req.query;
 
-    const db = getDatabase();
-    
-    db.all(query, [parseInt(limit)], (err, rows) => {
-        db.close();
-        if (err) {
-            return res.status(500).json({ error: 'Failed to fetch leaderboards' });
+        let query;
+        if (type === 'fastest') {
+            query = 'SELECT * FROM fastest_times_global WHERE global_rank <= $1 ORDER BY completion_time ASC';
+        } else if (type === 'highest') {
+            query = 'SELECT * FROM highest_scores_global WHERE global_rank <= $1 ORDER BY score DESC';
+        } else {
+            return res.status(400).json({ error: 'Invalid leaderboard type' });
         }
-        
-        res.json({ leaderboard: rows });
-    });
-}
+
+        const leaderboard = await db.all(query, [parseInt(limit)]);
+
+        return res.json({ leaderboard });
+    } catch (error) {
+        console.error('Leaderboard error:', error);
+        return res.status(500).json({ error: 'Database error', details: error.message });
+    }
+};
